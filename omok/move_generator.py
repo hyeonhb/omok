@@ -15,7 +15,7 @@ class MoveGenerator:
     def generate_candidates(self, board, color, max_moves=None):
         return self.generate_search_candidates(board, color, max_moves=max_moves)
 
-    def generate_tactical_moves(self, board, color):
+    def generate_tactical_moves(self, board, color, include_future_setup=True):
         essential = []
         seen = set()
         tactical_groups = [
@@ -23,6 +23,10 @@ class MoveGenerator:
             self.find_immediate_wins(board, opponent(color)),
             self.find_moves_by_pattern(board, color, "open_four"),
             self.find_moves_by_pattern(board, opponent(color), "open_four"),
+            self.find_four_three_moves(board, color),
+            self.find_four_three_moves(board, opponent(color)),
+            self.find_legal_double_three_threats(board, color),
+            self.find_legal_double_three_threats(board, opponent(color)),
             self.find_moves_by_pattern(board, color, "closed_four"),
             self.find_moves_by_pattern(board, opponent(color), "closed_four"),
             self.find_moves_by_pattern(board, color, "open_three"),
@@ -30,15 +34,24 @@ class MoveGenerator:
             self.find_moves_by_pattern(board, color, "broken_open_three"),
             self.find_moves_by_pattern(board, opponent(color), "broken_open_three"),
         ]
+        if include_future_setup:
+            tactical_groups.extend(
+                [
+                    self.find_future_four_three_setup_moves(board, color),
+                    self.find_future_four_three_setup_moves(board, opponent(color)),
+                ]
+            )
         for group in tactical_groups:
             for move in group:
                 if move not in seen and self.rules.is_legal_move(board, move[0], move[1], color):
                     seen.add(move)
                     essential.append(move)
-        return self.order_moves(board, color, essential)
+        return self.order_moves(board, color, essential, use_deep_score=False)
 
-    def generate_search_candidates(self, board, color, max_moves=None):
-        essential = self.generate_tactical_moves(board, color)
+    def generate_search_candidates(
+        self, board, color, max_moves=None, include_future_setup=True, use_deep_score=True
+    ):
+        essential = self.generate_tactical_moves(board, color, include_future_setup=include_future_setup)
         essential_set = set(essential)
         raw_moves = self._nearby_moves(board, radius=2)
         legal_moves = [
@@ -46,13 +59,14 @@ class MoveGenerator:
             for move in raw_moves
             if move not in essential_set and self.rules.is_legal_move(board, move[0], move[1], color)
         ]
-        normal = self.order_moves(board, color, legal_moves)
+        normal = self.order_moves(board, color, legal_moves, use_deep_score=use_deep_score)
         if max_moves is not None:
             normal = normal[:max_moves]
         return essential + normal
 
-    def order_moves(self, board, color, moves):
-        scored = [(self.evaluator.score_candidate(board, r, c, color), r, c) for r, c in moves]
+    def order_moves(self, board, color, moves, use_deep_score=False):
+        scorer = self.evaluator.deep_score_candidate if use_deep_score else self.evaluator.quick_score_candidate
+        scored = [(scorer(board, r, c, color), r, c) for r, c in moves]
         scored.sort(reverse=True)
         return [(r, c) for _, r, c in scored]
 
@@ -71,7 +85,7 @@ class MoveGenerator:
                     wins.append((r, c))
             finally:
                 board.undo(r, c)
-        return self.order_moves(board, color, wins)
+        return self.order_moves(board, color, wins, use_deep_score=False)
 
     def find_immediate_block(self, board, color):
         opp = opponent(color)
@@ -79,6 +93,18 @@ class MoveGenerator:
             if self.rules.is_legal_move(board, r, c, color):
                 return r, c
         return None
+
+    def has_unblockable_open_four(self, board, attacker_color, defender_color):
+        attacker_wins = self.find_immediate_wins(board, attacker_color)
+        defender_blocks = [
+            move
+            for move in attacker_wins
+            if self.rules.is_legal_move(board, move[0], move[1], defender_color)
+        ]
+        return len(defender_blocks) < len(attacker_wins) or len(defender_blocks) >= 2
+
+    def has_multiple_immediate_wins(self, board, attacker_color):
+        return len(self.find_immediate_wins(board, attacker_color)) >= 2
 
     def find_moves_by_pattern(self, board, color, pattern_type):
         moves = []
@@ -88,10 +114,33 @@ class MoveGenerator:
             counts = self.patterns.analyze_move(board, r, c, color)
             if self._matches_pattern(counts, pattern_type):
                 moves.append((r, c))
-        return self.order_moves(board, color, moves)
+        return self.order_moves(board, color, moves, use_deep_score=False)
+
+    def find_legal_double_three_threats(self, board, color):
+        return self.find_moves_by_pattern(board, color, "legal_double_three_threat")
+
+    def find_four_three_moves(self, board, color):
+        return self.find_moves_by_pattern(board, color, "four_three")
+
+    def find_future_four_three_setup_moves(self, board, color):
+        legal_moves = [
+            move
+            for move in self._nearby_moves(board, radius=2)
+            if self.rules.is_legal_move(board, move[0], move[1], color)
+        ]
+        ordered = self.order_moves(board, color, legal_moves, use_deep_score=False)[:24]
+        scored = []
+        for r, c in ordered:
+            score = self.evaluator.evaluate_future_threat_potential(board, (r, c), color)
+            if score >= 400_000:
+                scored.append((score, r, c))
+        scored.sort(reverse=True)
+        return [(r, c) for _, r, c in scored[:8]]
 
     def fallback_move(self, board, color):
-        candidates = self.generate_search_candidates(board, color, max_moves=1)
+        candidates = self.generate_search_candidates(
+            board, color, max_moves=1, include_future_setup=False, use_deep_score=False
+        )
         if candidates:
             return candidates[0]
         for r, c in board.legal_empty_cells():
@@ -113,9 +162,9 @@ class MoveGenerator:
         if pattern_type == "broken_open_three":
             return counts["broken_open_three"] > 0
         if pattern_type == "four_three":
-            four_count = counts["open_four"] + counts["closed_four"] + counts["broken_four"]
-            three_count = counts["open_three"] + counts["broken_open_three"]
-            return four_count > 0 and three_count > 0
+            return counts["four_three"] > 0
+        if pattern_type == "legal_double_three_threat":
+            return counts["legal_double_three_threat"] > 0
         raise ValueError(f"Unknown pattern type: {pattern_type}")
 
     def _nearby_moves(self, board, radius=2):

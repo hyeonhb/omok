@@ -130,7 +130,9 @@ class SearchEngine:
             normal_limit = 16 if depth < 3 else 12
         else:
             normal_limit = 22 if depth < 3 else 16
-        return self.generator.generate_search_candidates(board, color, max_moves=normal_limit)
+        return self.generator.generate_search_candidates(
+            board, color, max_moves=normal_limit, include_future_setup=False, use_deep_score=False
+        )
 
     def _max_depth_for_position(self, board):
         if board.move_count < 8:

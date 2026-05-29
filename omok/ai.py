@@ -10,6 +10,9 @@ from .search import SearchEngine
 from .threat_search import ThreatSearch
 
 
+SAFETY_MARGIN = 0.20
+
+
 class OmokAI:
     def __init__(self, color=BLACK, blocked_cells=None, time_limit=3.0):
         self.color = color
@@ -35,7 +38,7 @@ class OmokAI:
 
     def choose_move(self):
         start = time.time()
-        deadline = start + max(0.05, min(self.time_limit, 3.0) - 0.25)
+        deadline = start + max(0.05, min(self.time_limit, 3.0) - SAFETY_MARGIN)
 
         try:
             move = self._choose_move_internal(deadline)
@@ -72,11 +75,43 @@ class OmokAI:
         if open_four:
             return open_four
 
-        block_open_four = self._first_legal(
+        four_three = self._first_legal(self.generator.find_four_three_moves(self.board, self.color))
+        if four_three:
+            return four_three
+
+        prevent_opponent_open_four_creation = self._first_legal(
             self.generator.find_moves_by_pattern(self.board, self.opponent_color, "open_four")
         )
-        if block_open_four:
-            return block_open_four
+        if prevent_opponent_open_four_creation:
+            return prevent_opponent_open_four_creation
+
+        prevent_opponent_four_three_creation = self._first_legal(
+            self.generator.find_four_three_moves(self.board, self.opponent_color)
+        )
+        if prevent_opponent_four_three_creation:
+            return prevent_opponent_four_three_creation
+
+        block_double_three = self._first_legal(
+            self.generator.find_legal_double_three_threats(self.board, self.opponent_color)
+        )
+        if block_double_three:
+            return block_double_three
+
+        double_three = self._first_legal(self.generator.find_legal_double_three_threats(self.board, self.color))
+        if double_three:
+            return double_three
+
+        if time.time() + 0.45 < deadline:
+            block_future_setup = self._first_legal(
+                self.generator.find_future_four_three_setup_moves(self.board, self.opponent_color)
+            )
+            if block_future_setup:
+                return block_future_setup
+
+        if time.time() + 0.45 < deadline:
+            future_setup = self._first_legal(self.generator.find_future_four_three_setup_moves(self.board, self.color))
+            if future_setup:
+                return future_setup
 
         closed_four = self._first_legal(self.generator.find_moves_by_pattern(self.board, self.color, "closed_four"))
         if closed_four:
@@ -87,16 +122,6 @@ class OmokAI:
         )
         if block_closed_four:
             return block_closed_four
-
-        four_three = self._first_legal(self.generator.find_moves_by_pattern(self.board, self.color, "four_three"))
-        if four_three:
-            return four_three
-
-        block_four_three = self._first_legal(
-            self.generator.find_moves_by_pattern(self.board, self.opponent_color, "four_three")
-        )
-        if block_four_three:
-            return block_four_three
 
         try:
             attack_deadline = min(deadline, time.time() + 0.4)

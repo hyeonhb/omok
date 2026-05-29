@@ -226,6 +226,18 @@ class OmokGUI:
                         width=2,
                     )
 
+        if self.board.last_move:
+            r, c, _ = self.board.last_move
+            x, y = self._cell_center(r, c)
+            self.canvas.create_oval(
+                x - STONE_RADIUS - 4,
+                y - STONE_RADIUS - 4,
+                x + STONE_RADIUS + 4,
+                y + STONE_RADIUS + 4,
+                outline="#ffcc00",
+                width=3,
+            )
+
         if self.selected:
             x, y = self._cell_center(*self.selected)
             self.canvas.create_rectangle(x - 15, y - 15, x + 15, y + 15, outline="#0066ff", width=3)

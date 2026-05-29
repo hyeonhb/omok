@@ -21,9 +21,11 @@ class ThreatSearch:
         if immediate:
             return immediate
 
-        threat_moves = self.generator.generate_tactical_moves(board, color)
+        threat_moves = self.generator.generate_tactical_moves(board, color, include_future_setup=False)
         if not threat_moves:
-            threat_moves = self.generator.generate_search_candidates(board, color, max_moves=12)
+            threat_moves = self.generator.generate_search_candidates(
+                board, color, max_moves=12, include_future_setup=False
+            )
         for move in threat_moves[:18]:
             if time.time() >= deadline:
                 raise TimeoutError
@@ -81,7 +83,9 @@ class ThreatSearch:
         if winning:
             return [winning] if self.rules.is_legal_move(board, winning[0], winning[1], defender) else []
         replies = []
-        for move in self.generator.generate_search_candidates(board, defender, max_moves=16):
+        for move in self.generator.generate_search_candidates(
+            board, defender, max_moves=16, include_future_setup=False
+        ):
             r, c = move
             board.place(r, c, defender)
             try:

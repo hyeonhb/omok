@@ -24,7 +24,7 @@ class PatternAnalyzer:
     OPEN_THREE_SHAPES = SIMPLE_OPEN_THREE_SHAPES + BROKEN_OPEN_THREE_SHAPES
     OPEN_FOUR_SHAPES = (".OOOO.",)
     BROKEN_FOUR_SHAPES = ("OOO.O", "OO.OO", "O.OOO")
-    CLOSED_FOUR_SHAPES = ("XOOOO.", ".OOOOX") + BROKEN_FOUR_SHAPES
+    CLOSED_FOUR_SHAPES = ("XOOOO.", ".OOOOX")
     CLOSED_THREE_SHAPES = ("XOOO.", ".OOOX", "XOO.O.", ".O.OOX")
     OPEN_TWO_SHAPES = (".OO.", ".O.O.")
     CLOSED_TWO_SHAPES = ("XOO.", ".OOX")
@@ -137,26 +137,48 @@ class PatternAnalyzer:
 
         try:
             counts = Counter()
-            for dr, dc in DIRECTIONS:
+            four_dirs = set()
+            connected_three_dirs = set()
+            broken_three_dirs = set()
+            for dir_idx, (dr, dc) in enumerate(DIRECTIONS):
                 line = self.line_around(board, r, c, color, dr, dc)
                 center = len(line) // 2
                 if self._line_count(board, r, c, color, dr, dc) >= 5:
                     counts["five"] += 1
-                counts["open_four"] += self._count_centered_patterns(line, self.OPEN_FOUR_SHAPES, center)
-                counts["closed_four"] += self._count_centered_patterns(line, self.CLOSED_FOUR_SHAPES, center)
-                counts["broken_four"] += self._count_centered_patterns(line, self.BROKEN_FOUR_SHAPES, center)
-                counts["open_three"] += self._count_centered_patterns(
-                    line, self.SIMPLE_OPEN_THREE_SHAPES, center
+                has_open_four = self._count_centered_patterns(line, self.OPEN_FOUR_SHAPES, center) > 0
+                has_closed_four = self._count_centered_patterns(line, self.CLOSED_FOUR_SHAPES, center) > 0
+                has_broken_four = self._count_centered_patterns(line, self.BROKEN_FOUR_SHAPES, center) > 0
+                has_connected_three = (
+                    self._count_centered_patterns(line, self.CONNECTED_OPEN_THREE_SHAPES, center) > 0
                 )
-                counts["connected_open_three"] += self._count_centered_patterns(
-                    line, self.CONNECTED_OPEN_THREE_SHAPES, center
-                )
-                counts["broken_open_three"] += self._count_centered_patterns(
-                    line, self.BROKEN_OPEN_THREE_SHAPES, center
-                )
+                has_broken_three = self._count_centered_patterns(line, self.BROKEN_OPEN_THREE_SHAPES, center) > 0
+                counts["open_four"] += int(has_open_four)
+                counts["closed_four"] += int(has_closed_four)
+                counts["broken_four"] += int(has_broken_four)
+                counts["open_three"] += int(has_connected_three)
+                counts["connected_open_three"] += int(has_connected_three)
+                counts["broken_open_three"] += int(has_broken_three)
+                if has_open_four or has_closed_four or has_broken_four:
+                    counts["four_threat"] += 1
+                    four_dirs.add(dir_idx)
+                if has_connected_three:
+                    connected_three_dirs.add(dir_idx)
+                if has_broken_three:
+                    broken_three_dirs.add(dir_idx)
                 counts["closed_three"] += self._count_centered_patterns(line, self.CLOSED_THREE_SHAPES, center)
                 counts["open_two"] += self._count_centered_patterns(line, self.OPEN_TWO_SHAPES, center)
                 counts["closed_two"] += self._count_centered_patterns(line, self.CLOSED_TWO_SHAPES, center)
+            three_dirs = connected_three_dirs | broken_three_dirs
+            if any(four_dir != three_dir for four_dir in four_dirs for three_dir in three_dirs):
+                counts["four_three"] = 1
+            connected_broken_pairs = any(
+                connected_dir != broken_dir
+                for connected_dir in connected_three_dirs
+                for broken_dir in broken_three_dirs
+            )
+            broken_broken_pairs = len(broken_three_dirs) >= 2
+            if len(connected_three_dirs) < 2 and (connected_broken_pairs or broken_broken_pairs):
+                counts["legal_double_three_threat"] = 1
             return counts
         finally:
             if not placed_here:
