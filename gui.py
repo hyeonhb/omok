@@ -4,10 +4,47 @@ import time
 import tkinter as tk
 from tkinter import messagebox
 
-from omok.ai import OmokAI
-from omok.board import Board
-from omok.constants import BLACK, BOARD_SIZE, WHITE, opponent, to_external, to_internal
-from omok.rules import RuleEngine
+
+def configure_engine(engine: str = "stable") -> str:
+    global OmokAI, Board, RuleEngine, BLACK, BOARD_SIZE, WHITE, opponent, to_external, to_internal
+    if engine == "experimental":
+        from omok.ai import OmokAI as _OmokAI
+        from omok.board import Board as _Board
+        from omok.constants import (
+            BLACK as _BLACK,
+            BOARD_SIZE as _BOARD_SIZE,
+            WHITE as _WHITE,
+            opponent as _opponent,
+            to_external as _to_external,
+            to_internal as _to_internal,
+        )
+        from omok.rules import RuleEngine as _RuleEngine
+    else:
+        from engines.baseline.baseline_omok.ai import OmokAI as _OmokAI
+        from engines.baseline.baseline_omok.board import Board as _Board
+        from engines.baseline.baseline_omok.constants import (
+            BLACK as _BLACK,
+            BOARD_SIZE as _BOARD_SIZE,
+            WHITE as _WHITE,
+            opponent as _opponent,
+            to_external as _to_external,
+            to_internal as _to_internal,
+        )
+        from engines.baseline.baseline_omok.rules import RuleEngine as _RuleEngine
+
+    OmokAI = _OmokAI
+    Board = _Board
+    RuleEngine = _RuleEngine
+    BLACK = _BLACK
+    BOARD_SIZE = _BOARD_SIZE
+    WHITE = _WHITE
+    opponent = _opponent
+    to_external = _to_external
+    to_internal = _to_internal
+    return engine
+
+
+configure_engine("stable")
 
 
 CELL_SIZE = 30
@@ -29,9 +66,11 @@ def parse_cells(text):
 
 
 class OmokGUI:
-    def __init__(self, root):
+    def __init__(self, root, engine: str = "stable"):
+        configure_engine(engine)
+        self.engine = engine
         self.root = root
-        self.root.title("Omok AI")
+        self.root.title("Omok AI (stable)" if engine == "stable" else "Omok AI (experimental)")
 
         self.board = None
         self.ai = None
@@ -313,9 +352,10 @@ class OmokGUI:
         self.undo_button.configure(state=undo_state)
 
 
-def main():
+def main(engine: str = "stable"):
+    configure_engine(engine)
     root = tk.Tk()
-    OmokGUI(root)
+    OmokGUI(root, engine=engine)
     root.mainloop()
 
 

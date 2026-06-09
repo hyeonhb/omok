@@ -13,6 +13,13 @@ from tuning.play_match import play_match, random_blocked_cells
 from tuning.tune_weights import evaluate_config, load_configs_from_file, resolve_output_paths, sample_configs
 
 
+def test_baseline_uses_frozen_package_not_current_omok():
+    from omok.ai import OmokAI as CurrentOmokAIClass
+
+    assert BaselineOmokAI.__module__ == "engines.baseline.baseline_omok.ai"
+    assert BaselineOmokAI is not CurrentOmokAIClass
+
+
 def test_strategy_weights_default_is_neutral():
     weights = StrategyWeights()
     assert weights.initiative_weight_for(BLACK) == 1.0

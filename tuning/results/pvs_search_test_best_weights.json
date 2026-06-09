@@ -1,0 +1,18 @@
+{
+  "config_id": "pvs_current",
+  "score": 0.25,
+  "overall_win_rate": 0.25,
+  "black_win_rate": 0.25,
+  "white_win_rate": 0.25,
+  "weights": {
+    "black_initiative_weight": 1.0,
+    "black_blocking_weight": 1.0,
+    "white_initiative_weight": 1.0,
+    "white_blocking_weight": 1.0,
+    "opponent_reply_penalty_weight": 1.0,
+    "future_43_weight": 1.0,
+    "resilient_future_weight": 1.0,
+    "plan_candidate_weight": 0.0,
+    "leaf_next_threat_weight": 0.0
+  }
+}

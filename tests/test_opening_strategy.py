@@ -24,25 +24,25 @@ def test_default_strategy_weights_are_neutral():
 
 
 def test_color_specific_opening_flags():
-    assert ENABLE_BLACK_OPENING_SEED is True
+    assert ENABLE_BLACK_OPENING_SEED is False
     assert ENABLE_WHITE_OPENING_DISRUPTION is False
 
 
-def test_opening_multi_direction_seed_scores_for_black_only():
+def test_opening_multi_direction_seed_disabled_for_black():
     board = Board()
     board.place(9, 9, BLACK)
     evaluator = Evaluator()
-    assert evaluator.evaluate_opening_multi_direction_seed(board, 9, 10, BLACK) > 0
+    assert evaluator.evaluate_opening_multi_direction_seed(board, 9, 10, BLACK) == 0
     assert evaluator.evaluate_opening_multi_direction_seed(board, 9, 10, WHITE) == 0
 
 
-def test_black_root_deep_score_includes_opening_bonus():
+def test_black_root_deep_score_excludes_opening_bonus():
     board = Board()
     board.place(9, 9, BLACK)
     evaluator = Evaluator()
     base = evaluator.quick_score_candidate(board, 9, 10, BLACK)
     deep = evaluator.deep_score_candidate(board, 9, 10, BLACK, root_eval=True)
-    assert deep > base
+    assert deep == base
 
 
 def test_white_root_deep_score_excludes_opening_bonus():
@@ -118,9 +118,12 @@ def test_search_engine_does_not_call_opening_evaluations():
     assert observed == {"seed": 0, "disruption": 0}
 
 
-def test_omok_ai_black_uses_opening_seed_path():
+def test_omok_ai_black_does_not_use_opening_seed():
     ai = OmokAI(color=BLACK)
     assert ai.color == BLACK
+    board = Board()
+    board.place(9, 9, BLACK)
+    assert ai.generator.evaluator.evaluate_opening_multi_direction_seed(board, 9, 10, BLACK) == 0
 
 
 def test_omok_ai_white_does_not_apply_opening_disruption_in_deep_score():
