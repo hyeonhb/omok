@@ -21,6 +21,7 @@ class Board:
         self.last_move = None
         self.move_count = 0
         self.history = []
+        self.stones = set()
         self.hash_value = 0
         if blocked_cells:
             self.set_blocked_cells(blocked_cells)
@@ -49,6 +50,7 @@ class Board:
         self.last_move = (r, c, color)
         self.move_count += 1
         self.history.append((r, c, color))
+        self.stones.add((r, c, color))
 
     def undo(self, r, c):
         color = self.grid[r][c]
@@ -61,6 +63,7 @@ class Board:
             self.history.pop()
         else:
             self.history = [move for move in self.history if move[:2] != (r, c)]
+        self.stones.discard((r, c, color))
         self.last_move = self.history[-1] if self.history else None
 
     def set_blocked_cells(self, cells, external=True):
@@ -81,14 +84,12 @@ class Board:
         new_board.last_move = self.last_move
         new_board.move_count = self.move_count
         new_board.history = list(self.history)
+        new_board.stones = set(self.stones)
         new_board.hash_value = self.hash_value
         return new_board
 
     def occupied_cells(self):
-        for r in range(self.size):
-            for c in range(self.size):
-                if self.grid[r][c] in (BLACK, WHITE):
-                    yield r, c, self.grid[r][c]
+        yield from self.stones
 
     def legal_empty_cells(self):
         for r in range(self.size):

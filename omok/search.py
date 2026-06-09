@@ -24,13 +24,18 @@ class SearchEngine:
         self.generator = MoveGenerator(allow_double_four=allow_double_four)
         self.rules = RuleEngine(allow_double_four=allow_double_four)
         self.transposition_table = {}
+        self.eval_cache = {}
 
     def set_allow_double_four(self, allow):
         self.allow_double_four = allow
         self.evaluator.set_allow_double_four(allow)
         self.generator.set_allow_double_four(allow)
         self.rules.allow_double_four = allow
+        self.clear_cache()
+
+    def clear_cache(self):
         self.transposition_table.clear()
+        self.eval_cache.clear()
 
     def search(self, board, color, deadline, fallback=None):
         if fallback is None:
@@ -79,7 +84,7 @@ class SearchEngine:
         if terminal is not None:
             return terminal
         if depth == 0:
-            return self.evaluator.evaluate(board, color)
+            return self._cached_evaluate(board, color)
 
         key = (board.hash_value, color)
         original_alpha = alpha
@@ -98,7 +103,7 @@ class SearchEngine:
         best_move = None
         moves = self._limited_candidates(board, color, depth)
         if not moves:
-            return self.evaluator.evaluate(board, color)
+            return self._cached_evaluate(board, color)
 
         for r, c in moves:
             if time.time() >= deadline:
@@ -122,6 +127,12 @@ class SearchEngine:
             flag = "LOWER"
         self.transposition_table[key] = TTEntry(depth, int(best_score), flag, best_move)
         return int(best_score)
+
+    def _cached_evaluate(self, board, color):
+        key = (board.hash_value, color)
+        if key not in self.eval_cache:
+            self.eval_cache[key] = self.evaluator.evaluate(board, color)
+        return self.eval_cache[key]
 
     def _terminal_score(self, board, color):
         if not board.last_move:

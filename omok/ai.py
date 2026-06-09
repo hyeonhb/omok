@@ -10,7 +10,7 @@ from .search import SearchEngine
 from .threat_search import ThreatSearch
 
 
-SAFETY_MARGIN = 0.30
+SAFETY_MARGIN = 0.20
 
 
 class OmokAI:
@@ -30,6 +30,7 @@ class OmokAI:
 
     def set_blocked_cells(self, cells):
         self.board.set_blocked_cells(cells, external=True)
+        self.search_engine.clear_cache()
 
     def set_allow_double_four(self, allow):
         self.allow_double_four = allow
@@ -71,63 +72,92 @@ class OmokAI:
         if fallback is None:
             return None
 
-        immediate_win = self._first_legal(self.generator.find_immediate_wins(self.board, self.color))
+        if time.time() >= deadline:
+            return fallback
+        my_tactics = self.generator.classify_tactical_moves(self.board, self.color)
+        if time.time() >= deadline:
+            return fallback
+        opponent_tactics = self.generator.classify_tactical_moves(self.board, self.opponent_color)
+
+        immediate_win = self._first_legal(my_tactics["immediate_win"])
         if immediate_win:
             return immediate_win
 
-        immediate_block = self._first_legal(self.generator.find_immediate_wins(self.board, self.opponent_color))
+        if time.time() >= deadline:
+            return fallback
+        immediate_block = self._first_legal(opponent_tactics["immediate_win"])
         if immediate_block:
             return immediate_block
 
-        open_four = self._first_legal(self.generator.find_moves_by_pattern(self.board, self.color, "open_four"))
+        if time.time() >= deadline:
+            return fallback
+        open_four = self._first_legal(my_tactics["open_four"])
         if open_four:
             return open_four
 
-        four_three = self._first_legal(self.generator.find_four_three_moves(self.board, self.color))
+        if time.time() >= deadline:
+            return fallback
+        four_three = self._first_legal(my_tactics["four_three"])
         if four_three:
             return four_three
 
-        prevent_opponent_open_four_creation = self._first_legal(
-            self.generator.find_moves_by_pattern(self.board, self.opponent_color, "open_four")
-        )
+        if time.time() >= deadline:
+            return fallback
+        prevent_opponent_open_four_creation = self._first_legal(opponent_tactics["open_four"])
         if prevent_opponent_open_four_creation:
             return prevent_opponent_open_four_creation
 
-        prevent_opponent_four_three_creation = self._first_legal(
-            self.generator.find_four_three_moves(self.board, self.opponent_color)
-        )
+        if time.time() >= deadline:
+            return fallback
+        prevent_opponent_four_three_creation = self._first_legal(opponent_tactics["four_three"])
         if prevent_opponent_four_three_creation:
             return prevent_opponent_four_three_creation
 
-        block_double_three = self._first_legal(
-            self.generator.find_legal_double_three_threats(self.board, self.opponent_color)
-        )
+        if time.time() >= deadline:
+            return fallback
+        block_double_three = self._first_legal(opponent_tactics["legal_double_three_threat"])
         if block_double_three:
             return block_double_three
 
-        double_three = self._first_legal(self.generator.find_legal_double_three_threats(self.board, self.color))
+        if time.time() >= deadline:
+            return fallback
+        double_three = self._first_legal(my_tactics["legal_double_three_threat"])
         if double_three:
             return double_three
 
         if time.time() + 0.45 < deadline:
+            future_deadline = min(deadline, time.time() + 0.35)
             block_future_setup = self._first_legal(
-                self.generator.find_future_four_three_setup_moves(self.board, self.opponent_color)
+                self.generator.find_future_four_three_setup_moves(
+                    self.board,
+                    self.opponent_color,
+                    deadline=future_deadline,
+                )
             )
             if block_future_setup:
                 return block_future_setup
 
         if time.time() + 0.45 < deadline:
-            future_setup = self._first_legal(self.generator.find_future_four_three_setup_moves(self.board, self.color))
+            future_deadline = min(deadline, time.time() + 0.35)
+            future_setup = self._first_legal(
+                self.generator.find_future_four_three_setup_moves(
+                    self.board,
+                    self.color,
+                    deadline=future_deadline,
+                )
+            )
             if future_setup:
                 return future_setup
 
-        closed_four = self._first_legal(self.generator.find_moves_by_pattern(self.board, self.color, "closed_four"))
+        if time.time() >= deadline:
+            return fallback
+        closed_four = self._first_legal(my_tactics["closed_four"])
         if closed_four:
             return closed_four
 
-        block_closed_four = self._first_legal(
-            self.generator.find_moves_by_pattern(self.board, self.opponent_color, "closed_four")
-        )
+        if time.time() >= deadline:
+            return fallback
+        block_closed_four = self._first_legal(opponent_tactics["closed_four"])
         if block_closed_four:
             return block_closed_four
 

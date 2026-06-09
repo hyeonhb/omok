@@ -22,9 +22,10 @@ class RuleEngine:
         try:
             if self.check_win(board, r, c, color):
                 return True
-            if self.is_double_three(board, r, c, color):
+            counts = self.patterns.analyze_move(board, r, c, color)
+            if counts["connected_open_three"] >= 2:
                 return False
-            if self.is_double_four(board, r, c, color):
+            if not self.allow_double_four and counts["open_four"] >= 2:
                 return False
             return True
         finally:
@@ -39,7 +40,7 @@ class RuleEngine:
         try:
             if self.check_win(board, r, c, color):
                 return False
-            return self.patterns.count_connected_open_threes(board, r, c, color) >= 2
+            return self.patterns.analyze_move(board, r, c, color)["connected_open_three"] >= 2
         finally:
             if not placed_here:
                 board.undo(r, c)
@@ -55,7 +56,7 @@ class RuleEngine:
         try:
             if self.check_win(board, r, c, color):
                 return False
-            return self._count_forbidden_fours(board, r, c, color) >= 2
+            return self.patterns.analyze_move(board, r, c, color)["open_four"] >= 2
         finally:
             if not placed_here:
                 board.undo(r, c)

@@ -137,7 +137,7 @@ def test_opponent_future_setup_checked_before_own_future_setup():
     ai.generator.find_four_three_moves = lambda board, color: []
     ai.generator.find_legal_double_three_threats = lambda board, color: []
     ai.generator.find_future_four_three_setup_moves = (
-        lambda board, color: [(9, 7)] if color == ai.opponent_color else [(9, 11)]
+        lambda board, color, deadline=None: [(9, 7)] if color == ai.opponent_color else [(9, 11)]
     )
 
     assert ai._choose_move_internal(time.time() + 1.0) == (9, 7)
@@ -238,6 +238,44 @@ def test_search_candidates_can_skip_future_setup():
     without_future = generator.generate_search_candidates(board, BLACK, max_moves=2, include_future_setup=False)
 
     assert len(with_future) >= len(without_future)
+
+
+def test_generate_tactical_moves_skips_future_setup_when_disabled():
+    board = Board()
+    generator = MoveGenerator()
+    board.place(9, 9, BLACK)
+    called = {"future": False}
+
+    def fail_if_called(*args, **kwargs):
+        called["future"] = True
+        return []
+
+    generator.find_future_four_three_setup_moves = fail_if_called
+    generator.generate_tactical_moves(board, BLACK, include_future_setup=False)
+
+    assert not called["future"]
+
+
+def test_future_four_three_setup_deadline_returns_safely():
+    board = Board()
+    generator = MoveGenerator()
+    for pos in ((9, 9), (9, 10), (10, 9), (8, 8)):
+        board.place(pos[0], pos[1], BLACK)
+
+    moves = generator.find_future_four_three_setup_moves(board, BLACK, deadline=time.time() - 0.01)
+
+    assert isinstance(moves, list)
+
+
+def test_set_blocked_cells_clears_search_caches():
+    ai = OmokAI(color=BLACK)
+    ai.search_engine.transposition_table[(123, BLACK)] = object()
+    ai.search_engine.eval_cache[(456, BLACK)] = 10
+
+    ai.set_blocked_cells([(1, 1), (2, 2), (3, 3)])
+
+    assert ai.search_engine.transposition_table == {}
+    assert ai.search_engine.eval_cache == {}
 
 
 def test_score_candidate_prioritizes_immediate_block():
