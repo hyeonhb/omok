@@ -10,25 +10,33 @@ from .search import SearchEngine
 from .threat_search import ThreatSearch
 
 
-SAFETY_MARGIN = 0.20
+SAFETY_MARGIN = 0.30
 
 
 class OmokAI:
-    def __init__(self, color=BLACK, blocked_cells=None, time_limit=3.0):
+    def __init__(self, color=BLACK, blocked_cells=None, time_limit=3.0, allow_double_four=False):
         self.color = color
         self.opponent_color = opponent(color)
         self.time_limit = time_limit
+        self.allow_double_four = allow_double_four
         self.board = Board(blocked_cells=blocked_cells)
-        self.rules = RuleEngine()
-        self.generator = MoveGenerator()
-        self.search_engine = SearchEngine()
-        self.threat_search = ThreatSearch()
+        self.rules = RuleEngine(allow_double_four=allow_double_four)
+        self.generator = MoveGenerator(allow_double_four=allow_double_four)
+        self.search_engine = SearchEngine(allow_double_four=allow_double_four)
+        self.threat_search = ThreatSearch(allow_double_four=allow_double_four)
 
     def choose_color(self):
         return BLACK
 
     def set_blocked_cells(self, cells):
         self.board.set_blocked_cells(cells, external=True)
+
+    def set_allow_double_four(self, allow):
+        self.allow_double_four = allow
+        self.rules.allow_double_four = allow
+        self.generator.set_allow_double_four(allow)
+        self.search_engine.set_allow_double_four(allow)
+        self.threat_search.set_allow_double_four(allow)
 
     def notify_opponent_move(self, row, col):
         r, c = to_internal((row, col))

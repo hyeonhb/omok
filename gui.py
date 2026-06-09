@@ -44,6 +44,7 @@ class OmokGUI:
 
         self.blocked_var = tk.StringVar(value="3 3, 10 12, 15 7")
         self.ai_color_var = tk.StringVar(value="black")
+        self.allow_double_four_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value="금수 좌표와 AI 색상을 선택한 뒤 게임을 시작하세요.")
         self.selection_var = tk.StringVar(value="선택: 없음")
 
@@ -60,6 +61,7 @@ class OmokGUI:
         tk.Label(top, text="AI 색상").pack(side=tk.LEFT, padx=(10, 2))
         tk.Radiobutton(top, text="흑", variable=self.ai_color_var, value="black").pack(side=tk.LEFT)
         tk.Radiobutton(top, text="백", variable=self.ai_color_var, value="white").pack(side=tk.LEFT)
+        tk.Checkbutton(top, text="44 허용", variable=self.allow_double_four_var).pack(side=tk.LEFT, padx=(8, 2))
         tk.Button(top, text="게임 시작", command=self.start_game).pack(side=tk.LEFT, padx=8)
 
         self.canvas = tk.Canvas(self.root, width=CANVAS_SIZE, height=CANVAS_SIZE, bg="#d9a441")
@@ -83,8 +85,15 @@ class OmokGUI:
 
         self.ai_color = BLACK if self.ai_color_var.get() == "black" else WHITE
         self.human_color = opponent(self.ai_color)
+        allow_double_four = self.allow_double_four_var.get()
         self.board = Board(blocked_cells=blocked)
-        self.ai = OmokAI(color=self.ai_color, blocked_cells=blocked, time_limit=3.0)
+        self.rules = RuleEngine(allow_double_four=allow_double_four)
+        self.ai = OmokAI(
+            color=self.ai_color,
+            blocked_cells=blocked,
+            time_limit=3.0,
+            allow_double_four=allow_double_four,
+        )
         self.selected = None
         self.game_over = False
         self.human_turn = self.human_color == BLACK

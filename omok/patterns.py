@@ -128,6 +128,13 @@ class PatternAnalyzer:
             if self.has_four_threat_in_direction(board, r, c, color, dr, dc)
         )
 
+    def count_connected_open_fours(self, board, r, c, color):
+        return sum(
+            1
+            for dr, dc in DIRECTIONS
+            if self.has_open_four_in_direction(board, r, c, color, dr, dc)
+        )
+
     def analyze_move(self, board, r, c, color):
         placed_here = board.get(r, c) == color
         if not placed_here:

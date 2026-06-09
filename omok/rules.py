@@ -5,7 +5,8 @@ from .patterns import PatternAnalyzer
 
 
 class RuleEngine:
-    def __init__(self):
+    def __init__(self, allow_double_four=False):
+        self.allow_double_four = allow_double_four
         self.patterns = PatternAnalyzer()
 
     def check_win(self, board, r, c, color) -> bool:
@@ -44,6 +45,8 @@ class RuleEngine:
                 board.undo(r, c)
 
     def is_double_four(self, board, r, c, color) -> bool:
+        if self.allow_double_four:
+            return False
         placed_here = board.get(r, c) == color
         if not placed_here:
             if not board.is_empty(r, c):
@@ -58,7 +61,7 @@ class RuleEngine:
                 board.undo(r, c)
 
     def _count_forbidden_fours(self, board, r, c, color):
-        return self.patterns.count_four_threats(board, r, c, color)
+        return self.patterns.count_connected_open_fours(board, r, c, color)
 
     def _count_line(self, board, r, c, color, dr, dc):
         count = 1

@@ -7,10 +7,16 @@ from .rules import RuleEngine
 
 
 class MoveGenerator:
-    def __init__(self):
-        self.rules = RuleEngine()
-        self.evaluator = Evaluator()
+    def __init__(self, allow_double_four=False):
+        self.allow_double_four = allow_double_four
+        self.rules = RuleEngine(allow_double_four=allow_double_four)
+        self.evaluator = Evaluator(allow_double_four=allow_double_four)
         self.patterns = PatternAnalyzer()
+
+    def set_allow_double_four(self, allow):
+        self.allow_double_four = allow
+        self.rules.allow_double_four = allow
+        self.evaluator.set_allow_double_four(allow)
 
     def generate_candidates(self, board, color, max_moves=None):
         return self.generate_search_candidates(board, color, max_moves=max_moves)

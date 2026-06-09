@@ -18,11 +18,19 @@ class TTEntry:
 
 
 class SearchEngine:
-    def __init__(self):
-        self.evaluator = Evaluator()
-        self.generator = MoveGenerator()
-        self.rules = RuleEngine()
+    def __init__(self, allow_double_four=False):
+        self.allow_double_four = allow_double_four
+        self.evaluator = Evaluator(allow_double_four=allow_double_four)
+        self.generator = MoveGenerator(allow_double_four=allow_double_four)
+        self.rules = RuleEngine(allow_double_four=allow_double_four)
         self.transposition_table = {}
+
+    def set_allow_double_four(self, allow):
+        self.allow_double_four = allow
+        self.evaluator.set_allow_double_four(allow)
+        self.generator.set_allow_double_four(allow)
+        self.rules.allow_double_four = allow
+        self.transposition_table.clear()
 
     def search(self, board, color, deadline, fallback=None):
         if fallback is None:

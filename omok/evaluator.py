@@ -27,9 +27,14 @@ OPPONENT_FOUR_THREE_PENALTY = 3_000_000
 
 
 class Evaluator:
-    def __init__(self):
+    def __init__(self, allow_double_four=False):
+        self.allow_double_four = allow_double_four
         self.patterns = PatternAnalyzer()
-        self.rules = RuleEngine()
+        self.rules = RuleEngine(allow_double_four=allow_double_four)
+
+    def set_allow_double_four(self, allow):
+        self.allow_double_four = allow
+        self.rules.allow_double_four = allow
 
     def evaluate(self, board, color):
         my_score = self._pattern_score(board, color)

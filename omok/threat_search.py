@@ -9,10 +9,16 @@ from .rules import RuleEngine
 
 
 class ThreatSearch:
-    def __init__(self):
-        self.generator = MoveGenerator()
-        self.rules = RuleEngine()
+    def __init__(self, allow_double_four=False):
+        self.allow_double_four = allow_double_four
+        self.generator = MoveGenerator(allow_double_four=allow_double_four)
+        self.rules = RuleEngine(allow_double_four=allow_double_four)
         self.patterns = PatternAnalyzer()
+
+    def set_allow_double_four(self, allow):
+        self.allow_double_four = allow
+        self.generator.set_allow_double_four(allow)
+        self.rules.allow_double_four = allow
 
     def find_forcing_attack(self, board, color, deadline):
         if time.time() >= deadline:
