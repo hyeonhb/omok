@@ -23,7 +23,7 @@ class MoveGenerator:
     def generate_candidates(self, board, color, max_moves=None):
         return self.generate_search_candidates(board, color, max_moves=max_moves)
 
-    def classify_tactical_moves(self, board, color, radius=4):
+    def classify_tactical_moves(self, board, color, radius=4, deadline=None):
         groups = {
             "immediate_win": [],
             "open_four": [],
@@ -34,6 +34,8 @@ class MoveGenerator:
             "broken_open_three": [],
         }
         for r, c in self._nearby_moves(board, radius=radius):
+            if deadline is not None and time.time() >= deadline:
+                break
             if not self.rules.is_legal_move(board, r, c, color):
                 continue
             board.place(r, c, color)
@@ -57,16 +59,16 @@ class MoveGenerator:
             if counts["broken_open_three"]:
                 groups["broken_open_three"].append((r, c))
         return {
-            name: self.order_moves(board, color, moves, use_deep_score=False)
+            name: self.order_moves(board, color, moves, use_deep_score=False, deadline=deadline)
             for name, moves in groups.items()
         }
 
-    def generate_tactical_moves(self, board, color, include_future_setup=True):
+    def generate_tactical_moves(self, board, color, include_future_setup=True, deadline=None):
         essential = []
         seen = set()
         opp = opponent(color)
-        my = self.classify_tactical_moves(board, color)
-        opponent_tactics = self.classify_tactical_moves(board, opp)
+        my = self.classify_tactical_moves(board, color, deadline=deadline)
+        opponent_tactics = self.classify_tactical_moves(board, opp, deadline=deadline)
         tactical_groups = [
             my["immediate_win"],
             opponent_tactics["immediate_win"],
@@ -82,40 +84,53 @@ class MoveGenerator:
             opponent_tactics["open_three"],
             my["broken_open_three"],
             opponent_tactics["broken_open_three"],
+            self.get_defense_points_for_threats(board, opp, color, deadline=deadline),
         ]
         if include_future_setup:
             tactical_groups.extend(
                 [
-                    self.find_future_four_three_setup_moves(board, color),
-                    self.find_future_four_three_setup_moves(board, opp),
+                    self.find_future_four_three_setup_moves(board, color, deadline=deadline),
+                    self.find_future_four_three_setup_moves(board, opp, deadline=deadline),
                 ]
             )
         for group in tactical_groups:
             for move in group:
+                if deadline is not None and time.time() >= deadline:
+                    break
                 if move not in seen and self.rules.is_legal_move(board, move[0], move[1], color):
                     seen.add(move)
                     essential.append(move)
-        return self.order_moves(board, color, essential, use_deep_score=False)
+        return self.order_moves(board, color, essential, use_deep_score=False, deadline=deadline)
 
     def generate_search_candidates(
-        self, board, color, max_moves=None, include_future_setup=True, use_deep_score=True
+        self, board, color, max_moves=None, include_future_setup=True, use_deep_score=True, deadline=None
     ):
-        essential = self.generate_tactical_moves(board, color, include_future_setup=include_future_setup)
+        essential = self.generate_tactical_moves(
+            board,
+            color,
+            include_future_setup=include_future_setup,
+            deadline=deadline,
+        )
         essential_set = set(essential)
         raw_moves = self._nearby_moves(board, radius=2)
-        legal_moves = [
-            move
-            for move in raw_moves
-            if move not in essential_set and self.rules.is_legal_move(board, move[0], move[1], color)
-        ]
-        normal = self.order_moves(board, color, legal_moves, use_deep_score=use_deep_score)
+        legal_moves = []
+        for move in raw_moves:
+            if deadline is not None and time.time() >= deadline:
+                break
+            if move not in essential_set and self.rules.is_legal_move(board, move[0], move[1], color):
+                legal_moves.append(move)
+        normal = self.order_moves(board, color, legal_moves, use_deep_score=use_deep_score, deadline=deadline)
         if max_moves is not None:
             normal = normal[:max_moves]
         return essential + normal
 
-    def order_moves(self, board, color, moves, use_deep_score=False):
+    def order_moves(self, board, color, moves, use_deep_score=False, deadline=None):
         scorer = self.evaluator.deep_score_candidate if use_deep_score else self.evaluator.quick_score_candidate
-        scored = [(scorer(board, r, c, color), r, c) for r, c in moves]
+        scored = []
+        for r, c in moves:
+            if deadline is not None and time.time() >= deadline:
+                break
+            scored.append((scorer(board, r, c, color), r, c))
         scored.sort(reverse=True)
         return [(r, c) for _, r, c in scored]
 
@@ -123,9 +138,11 @@ class MoveGenerator:
         wins = self.find_immediate_wins(board, color)
         return wins[0] if wins else None
 
-    def find_immediate_wins(self, board, color):
+    def find_immediate_wins(self, board, color, deadline=None):
         wins = []
         for r, c in self._nearby_moves(board, radius=4):
+            if deadline is not None and time.time() >= deadline:
+                break
             if not self.rules.is_legal_move(board, r, c, color):
                 continue
             board.place(r, c, color)
@@ -134,7 +151,7 @@ class MoveGenerator:
                     wins.append((r, c))
             finally:
                 board.undo(r, c)
-        return self.order_moves(board, color, wins, use_deep_score=False)
+        return self.order_moves(board, color, wins, use_deep_score=False, deadline=deadline)
 
     def find_immediate_block(self, board, color):
         opp = opponent(color)
@@ -155,15 +172,17 @@ class MoveGenerator:
     def has_multiple_immediate_wins(self, board, attacker_color):
         return len(self.find_immediate_wins(board, attacker_color)) >= 2
 
-    def find_moves_by_pattern(self, board, color, pattern_type):
+    def find_moves_by_pattern(self, board, color, pattern_type, deadline=None):
         moves = []
         for r, c in self._nearby_moves(board, radius=4):
+            if deadline is not None and time.time() >= deadline:
+                break
             if not self.rules.is_legal_move(board, r, c, color):
                 continue
             counts = self.patterns.analyze_move(board, r, c, color)
             if self._matches_pattern(counts, pattern_type):
                 moves.append((r, c))
-        return self.order_moves(board, color, moves, use_deep_score=False)
+        return self.order_moves(board, color, moves, use_deep_score=False, deadline=deadline)
 
     def find_legal_double_three_threats(self, board, color):
         return self.find_moves_by_pattern(board, color, "legal_double_three_threat")
@@ -182,19 +201,66 @@ class MoveGenerator:
         for r, c in ordered:
             if deadline is not None and time.time() >= deadline:
                 break
-            score = self.evaluator.evaluate_future_threat_potential(board, (r, c), color)
+            future_score = self.evaluator.evaluate_future_threat_potential(
+                board,
+                (r, c),
+                color,
+                deadline=deadline,
+            )
+            if deadline is not None and time.time() >= deadline:
+                score = future_score
+            else:
+                resilient_score = self.evaluator.evaluate_resilient_future_four_three_setup(
+                    board,
+                    (r, c),
+                    color,
+                    deadline=deadline,
+                )
+                score = future_score + resilient_score
             if score >= 400_000:
                 scored.append((score, r, c))
         scored.sort(reverse=True)
         return [(r, c) for _, r, c in scored[:8]]
 
-    def fallback_move(self, board, color):
-        legal_moves = [
-            move for move in self._nearby_moves(board, radius=2)
-            if self.rules.is_legal_move(board, move[0], move[1], color)
-        ]
+    def get_defense_points_for_threats(self, board, attacker_color, defender_color, deadline=None):
+        points = set()
+        for r, c, stone_color in board.occupied_cells():
+            if deadline is not None and time.time() >= deadline:
+                break
+            if stone_color != attacker_color:
+                continue
+            for dr, dc in ((0, 1), (1, 0), (1, 1), (1, -1)):
+                line_cells = []
+                symbols = []
+                for step in range(-4, 5):
+                    nr, nc = r + dr * step, c + dc * step
+                    line_cells.append((nr, nc))
+                    symbols.append(self.patterns.cell_symbol(board, nr, nc, attacker_color))
+                line = "".join(symbols)
+                for pattern in (".OOO.", ".OO.O.", ".O.OO.", ".OOOO.", "OOO.O", "OO.OO", "O.OOO"):
+                    start = line.find(pattern)
+                    while start != -1:
+                        if deadline is not None and time.time() >= deadline:
+                            break
+                        for idx, char in enumerate(pattern):
+                            if char == ".":
+                                point = line_cells[start + idx]
+                                if self.rules.is_legal_move(board, point[0], point[1], defender_color):
+                                    points.add(point)
+                        start = line.find(pattern, start + 1)
+        return self.order_moves(board, defender_color, list(points), use_deep_score=False, deadline=deadline)
+
+    def fallback_move(self, board, color, deadline=None):
+        legal_moves = []
+        for move in self._nearby_moves(board, radius=2):
+            if deadline is not None and time.time() >= deadline:
+                break
+            if self.rules.is_legal_move(board, move[0], move[1], color):
+                legal_moves.append(move)
         if legal_moves:
-            return self.order_moves(board, color, legal_moves, use_deep_score=False)[0]
+            ordered = self.order_moves(board, color, legal_moves, use_deep_score=False, deadline=deadline)
+            if ordered:
+                return ordered[0]
         for r, c in board.legal_empty_cells():
             if self.rules.is_legal_move(board, r, c, color):
                 return r, c

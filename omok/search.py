@@ -39,7 +39,7 @@ class SearchEngine:
 
     def search(self, board, color, deadline, fallback=None):
         if fallback is None:
-            fallback = self.generator.fallback_move(board, color)
+            fallback = self.generator.fallback_move(board, color, deadline=deadline)
         best_move = fallback
         max_depth = self._max_depth_for_position(board)
 
@@ -59,7 +59,7 @@ class SearchEngine:
         beta = INF
         best_score = -INF
         best_move = None
-        moves = self._limited_candidates(board, color, depth)
+        moves = self._limited_candidates(board, color, depth, deadline)
 
         for move in moves:
             if time.time() >= deadline:
@@ -101,7 +101,7 @@ class SearchEngine:
 
         best_score = -INF
         best_move = None
-        moves = self._limited_candidates(board, color, depth)
+        moves = self._limited_candidates(board, color, depth, deadline)
         if not moves:
             return self._cached_evaluate(board, color)
 
@@ -142,7 +142,9 @@ class SearchEngine:
             return -FIVE_OR_MORE if last_color == opponent(color) else FIVE_OR_MORE
         return None
 
-    def _limited_candidates(self, board, color, depth):
+    def _limited_candidates(self, board, color, depth, deadline):
+        if time.time() >= deadline:
+            return []
         if board.move_count < 8:
             normal_limit = 12
         elif board.move_count < 30:
@@ -150,7 +152,12 @@ class SearchEngine:
         else:
             normal_limit = 22 if depth < 3 else 16
         return self.generator.generate_search_candidates(
-            board, color, max_moves=normal_limit, include_future_setup=False, use_deep_score=False
+            board,
+            color,
+            max_moves=normal_limit,
+            include_future_setup=False,
+            use_deep_score=False,
+            deadline=deadline,
         )
 
     def _max_depth_for_position(self, board):
