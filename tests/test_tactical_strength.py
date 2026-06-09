@@ -85,6 +85,60 @@ def test_defensive_tss_detects_opponent_open_four_creation():
     assert defense in {(9, 5), (9, 9)}
 
 
+def test_tss_proves_open_four_forced_win():
+    board = Board()
+    tss = ThreatSearch()
+    for c in (6, 7, 8):
+        board.place(9, c, BLACK)
+
+    result = tss.find_forced_win(
+        board,
+        attacker_color=BLACK,
+        defender_color=WHITE,
+        deadline=time.time() + 0.4,
+        max_depth=4,
+    )
+
+    assert result.proven
+    assert result.move in {(9, 5), (9, 9)}
+    assert result.reason in {"open_four_forced", "all_defenses_fail", "no_defense"}
+
+
+def test_tss_does_not_prove_simple_open_three():
+    board = Board()
+    tss = ThreatSearch()
+    board.place(9, 8, BLACK)
+    board.place(9, 10, BLACK)
+
+    result = tss.find_forced_win(
+        board,
+        attacker_color=BLACK,
+        defender_color=WHITE,
+        deadline=time.time() + 0.4,
+        max_depth=4,
+    )
+
+    assert not result.proven
+
+
+def test_tss_not_proven_when_defender_has_valid_response():
+    board = Board()
+    tss = ThreatSearch()
+    for c in (6, 7):
+        board.place(9, c, BLACK)
+    board.place(3, 3, WHITE)
+
+    result = tss.find_forced_win(
+        board,
+        attacker_color=BLACK,
+        defender_color=WHITE,
+        deadline=time.time() + 0.4,
+        max_depth=4,
+    )
+
+    assert not result.proven
+
+
 def test_defensive_tss_detects_opponent_four_three_creation():
     board = Board()
     tss = ThreatSearch()
@@ -154,8 +208,8 @@ def test_future_four_three_setup_scores_above_single_open_three():
     board.place(4, 4, BLACK)
     board.place(4, 6, BLACK)
 
-    setup_score = evaluator.deep_score_candidate(board, 9, 10, BLACK)
-    open_three_score = evaluator.deep_score_candidate(board, 4, 5, BLACK)
+    setup_score = evaluator.deep_score_candidate(board, 9, 10, BLACK, root_eval=True)
+    open_three_score = evaluator.deep_score_candidate(board, 4, 5, BLACK, root_eval=True)
 
     assert setup_score > open_three_score
 
@@ -180,8 +234,8 @@ def test_candidate_allowing_opponent_open_four_gets_large_penalty():
     board.place(3, 3, BLACK)
     board.place(3, 5, BLACK)
 
-    risky = evaluator.deep_score_candidate(board, 3, 4, BLACK)
-    block = evaluator.deep_score_candidate(board, 9, 9, BLACK)
+    risky = evaluator.deep_score_candidate(board, 3, 4, BLACK, root_eval=True)
+    block = evaluator.deep_score_candidate(board, 9, 9, BLACK, root_eval=True)
 
     assert block > risky
 
@@ -197,7 +251,9 @@ def test_deep_score_deadline_skips_heavy_calculations():
     evaluator.evaluate_resilient_future_four_three_setup = fail_if_called
     evaluator.evaluate_opponent_best_reply_penalty = fail_if_called
 
-    score = evaluator.deep_score_candidate(board, 9, 9, BLACK, deadline=time.time() - 0.01)
+    score = evaluator.deep_score_candidate(
+        board, 9, 9, BLACK, deadline=time.time() - 0.01, root_eval=True
+    )
 
     assert score > 0
 
@@ -626,8 +682,8 @@ def test_candidate_allowing_opponent_immediate_win_is_penalized():
     board.place(3, 3, BLACK)
     board.place(3, 5, BLACK)
 
-    risky_attack = evaluator.deep_score_candidate(board, 3, 4, BLACK)
-    direct_block = evaluator.deep_score_candidate(board, 9, 4, BLACK)
+    risky_attack = evaluator.deep_score_candidate(board, 3, 4, BLACK, root_eval=True)
+    direct_block = evaluator.deep_score_candidate(board, 9, 4, BLACK, root_eval=True)
 
     assert direct_block > risky_attack
 
@@ -639,8 +695,8 @@ def test_weak_attack_blocking_opponent_four_three_scores_higher():
         board.place(pos[0], pos[1], WHITE)
     board.place(3, 3, BLACK)
 
-    blocking_move = evaluator.deep_score_candidate(board, 9, 9, BLACK)
-    quiet_attack = evaluator.deep_score_candidate(board, 3, 4, BLACK)
+    blocking_move = evaluator.deep_score_candidate(board, 9, 9, BLACK, root_eval=True)
+    quiet_attack = evaluator.deep_score_candidate(board, 3, 4, BLACK, root_eval=True)
 
     assert blocking_move > quiet_attack
 
@@ -821,3 +877,120 @@ def test_search_engine_returns_fallback_when_candidate_deadline_passed():
     fallback = (9, 10)
 
     assert engine.search(board, BLACK, deadline=time.time() - 0.01, fallback=fallback) == fallback
+
+
+def test_plan_setup_scores_above_simple_open_three():
+    board = Board()
+    evaluator = Evaluator()
+    for pos in ((9, 7), (9, 8), (8, 10), (11, 10)):
+        board.place(pos[0], pos[1], BLACK)
+    board.place(4, 4, WHITE)
+
+    plan_score = evaluator.deep_score_candidate(board, 9, 10, BLACK, root_eval=True)
+    simple_open_three_score = evaluator.deep_score_candidate(board, 4, 5, BLACK, root_eval=True)
+
+    assert plan_score > simple_open_three_score
+
+
+def test_resilient_future_threat_gets_higher_initiative_score():
+    evaluator = Evaluator()
+    resilient = Board()
+    for pos in ((9, 7), (9, 8), (8, 10), (11, 10)):
+        resilient.place(pos[0], pos[1], BLACK)
+    simple = Board()
+    simple.place(4, 4, BLACK)
+
+    resilient_score = evaluator.evaluate_initiative_potential(resilient, 9, 10, BLACK)
+    simple_score = evaluator.evaluate_initiative_potential(simple, 4, 5, BLACK)
+
+    assert resilient_score > simple_score
+
+
+def test_opponent_plan_blocking_rewards_removing_future_setup():
+    board = Board()
+    evaluator = Evaluator()
+    for pos in ((9, 7), (9, 8), (8, 10), (11, 10)):
+        board.place(pos[0], pos[1], WHITE)
+    board.place(4, 4, BLACK)
+
+    assert evaluator.evaluate_opponent_plan_blocking(board, 9, 10, BLACK) >= 300_000
+
+
+def test_single_closed_four_allowing_opponent_plan_is_penalized():
+    board = Board()
+    evaluator = Evaluator()
+    for c in (6, 7, 8):
+        board.place(9, c, BLACK)
+    board.place(9, 5, WHITE)
+    counts = evaluator.patterns.analyze_move(board, 9, 9, BLACK)
+
+    penalty = evaluator._single_attack_penalty(
+        counts,
+        initiative_score=0,
+        opponent_plan_block_score=0,
+        reply_penalty=-12_000_000,
+        opponent_next_four_threes=1,
+    )
+
+    assert penalty <= -400_000
+
+
+def test_plan_candidates_not_in_essential_when_disabled():
+    from omok.strategy_config import ENABLE_PLAN_CANDIDATES
+
+    assert ENABLE_PLAN_CANDIDATES is False
+    board = Board()
+    generator = MoveGenerator()
+    for pos in ((9, 7), (9, 8), (8, 10), (11, 10)):
+        board.place(pos[0], pos[1], BLACK)
+
+    called = {"find_plan": 0}
+    original_find = generator.find_plan_candidates
+
+    def spy_find(*args, **kwargs):
+        called["find_plan"] += 1
+        return original_find(*args, **kwargs)
+
+    generator.find_plan_candidates = spy_find
+    generator.generate_search_candidates(
+        board,
+        BLACK,
+        max_moves=1,
+        include_future_setup=False,
+        use_deep_score=False,
+    )
+    assert called["find_plan"] == 0
+
+
+def test_plan_candidates_do_not_bypass_search_engine():
+    ai = OmokAI(color=BLACK, time_limit=1.0)
+    ai.board.place(9, 9, BLACK)
+    ai.board.place(4, 4, WHITE)
+    searched_move = (9, 10)
+    ai._root_deep_rerank = lambda soft_deadline, hard_deadline=None, fallback=None: None
+    ai.search_engine.search = lambda board, color, deadline, fallback=None: searched_move
+
+    assert ai.choose_move() == (10, 11)
+
+
+def test_leaf_next_threat_evaluation_keeps_choose_move_under_three_seconds():
+    ai = OmokAI(color=BLACK, blocked_cells=[(3, 3), (10, 12), (15, 7)], time_limit=3.0)
+    for r, c, color in (
+        (9, 9, WHITE),
+        (9, 10, BLACK),
+        (10, 10, WHITE),
+        (8, 10, BLACK),
+        (8, 8, WHITE),
+        (10, 8, BLACK),
+        (7, 9, WHITE),
+        (11, 9, BLACK),
+        (12, 12, WHITE),
+        (6, 8, BLACK),
+    ):
+        ai.board.place(r, c, color)
+
+    start = time.time()
+    move = ai.choose_move()
+
+    assert time.time() - start < 3.0
+    assert ai.board.get(*to_internal(move)) == BLACK

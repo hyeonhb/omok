@@ -1,0 +1,16 @@
+[
+  {
+    "config_id": "cfg_001_fixed",
+    "weights": {
+      "black_initiative_weight": 1.25,
+      "black_blocking_weight": 0.95,
+      "white_initiative_weight": 0.9,
+      "white_blocking_weight": 1.05,
+      "opponent_reply_penalty_weight": 1.2,
+      "future_43_weight": 1.0,
+      "resilient_future_weight": 1.0,
+      "plan_candidate_weight": 1.0,
+      "leaf_next_threat_weight": 0.0
+    }
+  }
+]

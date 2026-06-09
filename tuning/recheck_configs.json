@@ -1,0 +1,44 @@
+[
+  {
+    "config_id": "cfg_001",
+    "weights": {
+      "black_initiative_weight": 1.25,
+      "black_blocking_weight": 0.95,
+      "white_initiative_weight": 0.9,
+      "white_blocking_weight": 1.05,
+      "opponent_reply_penalty_weight": 1.2,
+      "future_43_weight": 1.0,
+      "resilient_future_weight": 1.0,
+      "plan_candidate_weight": 1.0,
+      "leaf_next_threat_weight": 0.0
+    }
+  },
+  {
+    "config_id": "cfg_004",
+    "weights": {
+      "black_initiative_weight": 1.15,
+      "black_blocking_weight": 0.75,
+      "white_initiative_weight": 1.0,
+      "white_blocking_weight": 1.15,
+      "opponent_reply_penalty_weight": 0.8,
+      "future_43_weight": 1.0,
+      "resilient_future_weight": 1.0,
+      "plan_candidate_weight": 1.0,
+      "leaf_next_threat_weight": 0.1
+    }
+  },
+  {
+    "config_id": "cfg_006",
+    "weights": {
+      "black_initiative_weight": 1.05,
+      "black_blocking_weight": 0.95,
+      "white_initiative_weight": 1.1,
+      "white_blocking_weight": 1.15,
+      "opponent_reply_penalty_weight": 1.0,
+      "future_43_weight": 1.0,
+      "resilient_future_weight": 1.0,
+      "plan_candidate_weight": 1.0,
+      "leaf_next_threat_weight": 0.0
+    }
+  }
+]

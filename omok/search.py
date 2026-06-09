@@ -7,6 +7,7 @@ from .constants import FIVE_OR_MORE, INF, opponent
 from .evaluator import Evaluator
 from .move_generator import MoveGenerator
 from .rules import RuleEngine
+from .strategy_weights import StrategyWeights
 
 
 @dataclass
@@ -18,10 +19,17 @@ class TTEntry:
 
 
 class SearchEngine:
-    def __init__(self, allow_double_four=False):
+    def __init__(self, allow_double_four=False, strategy_weights=None):
         self.allow_double_four = allow_double_four
-        self.evaluator = Evaluator(allow_double_four=allow_double_four)
-        self.generator = MoveGenerator(allow_double_four=allow_double_four)
+        self.strategy_weights = strategy_weights or StrategyWeights()
+        self.evaluator = Evaluator(
+            allow_double_four=allow_double_four,
+            strategy_weights=self.strategy_weights,
+        )
+        self.generator = MoveGenerator(
+            allow_double_four=allow_double_four,
+            strategy_weights=self.strategy_weights,
+        )
         self.rules = RuleEngine(allow_double_four=allow_double_four)
         self.transposition_table = {}
         self.eval_cache = {}
@@ -31,6 +39,12 @@ class SearchEngine:
         self.evaluator.set_allow_double_four(allow)
         self.generator.set_allow_double_four(allow)
         self.rules.allow_double_four = allow
+        self.clear_cache()
+
+    def set_strategy_weights(self, strategy_weights):
+        self.strategy_weights = strategy_weights or StrategyWeights()
+        self.evaluator.set_strategy_weights(self.strategy_weights)
+        self.generator.set_strategy_weights(self.strategy_weights)
         self.clear_cache()
 
     def clear_cache(self):
@@ -156,6 +170,7 @@ class SearchEngine:
             color,
             max_moves=normal_limit,
             include_future_setup=False,
+            include_plan_candidates=False,
             use_deep_score=False,
             deadline=deadline,
         )

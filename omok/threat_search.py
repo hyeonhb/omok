@@ -1,11 +1,20 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 
 from .constants import opponent
 from .move_generator import MoveGenerator
 from .patterns import PatternAnalyzer
 from .rules import RuleEngine
+
+
+@dataclass
+class ThreatSearchResult:
+    move: tuple[int, int] | None
+    proven: bool
+    reason: str
+    depth: int
 
 
 class ThreatSearch:
@@ -21,70 +30,188 @@ class ThreatSearch:
         self.rules.allow_double_four = allow
 
     def find_forcing_attack(self, board, color, deadline):
-        if time.time() >= deadline:
-            return None
-        immediate = self.generator.find_immediate_wins(board, color, deadline=deadline)
-        immediate = immediate[0] if immediate else None
-        if immediate:
-            return immediate
-
-        threat_moves = self.generator.generate_tactical_moves(
-            board,
-            color,
-            include_future_setup=False,
-            deadline=deadline,
-        )
-        if not threat_moves:
-            threat_moves = self.generator.generate_search_candidates(
-                board,
-                color,
-                max_moves=12,
-                include_future_setup=False,
-                deadline=deadline,
-            )
-        for move in threat_moves[:18]:
-            if time.time() >= deadline:
-                raise TimeoutError
-            if self._creates_strong_threat(board, move, color):
-                if not self._opponent_has_sufficient_defense(board, move, color, deadline):
-                    return move
-        return None
+        result = self.find_forced_win(board, color, opponent(color), deadline, max_depth=6)
+        return result.move if result.proven else None
 
     def find_forcing_defense(self, board, color, deadline):
         opp = opponent(color)
-        try:
-            defense = self.find_opponent_forcing_attack(board, opp, color, deadline, max_depth=4)
-        except TimeoutError:
-            return None
-        if defense:
-            return defense
-        try:
-            attack = self.find_forcing_attack(board, opp, deadline)
-        except TimeoutError:
-            return None
-        if attack and self.rules.is_legal_move(board, attack[0], attack[1], color):
-            return attack
-        return None
+        result = self.find_forced_defense(board, opp, color, deadline, max_depth=6)
+        return result.move if result.proven else None
 
-    def find_opponent_forcing_attack(self, board, opponent_color, defender_color, deadline, max_depth=6):
-        attack = self._find_forcing_sequence(
-            board,
-            attacker=opponent_color,
-            defender=defender_color,
-            deadline=deadline,
-            depth=max_depth,
-        )
-        if not attack:
-            return None
+    def find_forced_win(self, board, attacker_color, defender_color, deadline, max_depth=8):
+        if time.time() >= deadline:
+            return ThreatSearchResult(None, False, "timeout", 0)
+
+        for move in self.generate_forcing_attack_moves(board, attacker_color, deadline=deadline)[:12]:
+            if time.time() >= deadline:
+                return ThreatSearchResult(None, False, "timeout", max_depth)
+            r, c = move
+            if not self.rules.is_legal_move(board, r, c, attacker_color):
+                continue
+            board.place(r, c, attacker_color)
+            try:
+                if self.rules.check_win(board, r, c, attacker_color):
+                    return ThreatSearchResult(move, True, "immediate_win", max_depth)
+                if not self._creates_strong_threat_after_place(board, r, c, attacker_color):
+                    continue
+                if self.generator.has_unblockable_open_four(board, attacker_color, defender_color):
+                    return ThreatSearchResult(move, True, "open_four_forced", max_depth)
+
+                defenses = self.generate_forced_defense_moves(
+                    board,
+                    attacker_color,
+                    defender_color,
+                    move,
+                    deadline=deadline,
+                )
+                if not defenses:
+                    return ThreatSearchResult(move, True, "no_defense", max_depth)
+
+                all_defenses_fail = True
+                for defense in defenses[:8]:
+                    if time.time() >= deadline:
+                        return ThreatSearchResult(None, False, "timeout", max_depth)
+                    dr, dc = defense
+                    board.place(dr, dc, defender_color)
+                    try:
+                        if self.rules.check_win(board, dr, dc, defender_color):
+                            all_defenses_fail = False
+                            break
+                        if not self._prove_forced_win(
+                            board,
+                            attacker_color,
+                            defender_color,
+                            max_depth - 2,
+                            deadline,
+                        ):
+                            all_defenses_fail = False
+                            break
+                    finally:
+                        board.undo(dr, dc)
+                if all_defenses_fail:
+                    return ThreatSearchResult(move, True, "all_defenses_fail", max_depth)
+            finally:
+                board.undo(r, c)
+        return ThreatSearchResult(None, False, "not_found", max_depth)
+
+    def find_forced_defense(self, board, attacker_color, defender_color, deadline, max_depth=8):
+        result = self.find_forced_win(board, attacker_color, defender_color, deadline, max_depth=max_depth)
+        if not result.proven or result.move is None:
+            return ThreatSearchResult(None, False, result.reason, result.depth)
+
+        attack = result.move
         if self.rules.is_legal_move(board, attack[0], attack[1], defender_color):
-            return attack
+            return ThreatSearchResult(attack, True, result.reason, result.depth)
 
-        board.place(attack[0], attack[1], opponent_color)
+        board.place(attack[0], attack[1], attacker_color)
         try:
-            replies = self._direct_defense_replies(board, opponent_color, defender_color)
+            defenses = self.generate_forced_defense_moves(
+                board,
+                attacker_color,
+                defender_color,
+                attack,
+                deadline=deadline,
+            )
         finally:
             board.undo(attack[0], attack[1])
-        return replies[0] if replies else None
+        return ThreatSearchResult(defenses[0] if defenses else None, bool(defenses), result.reason, result.depth)
+
+    def find_opponent_forcing_attack(self, board, opponent_color, defender_color, deadline, max_depth=6):
+        result = self.find_forced_defense(
+            board,
+            attacker_color=opponent_color,
+            defender_color=defender_color,
+            deadline=deadline,
+            max_depth=max_depth,
+        )
+        return result.move if result.proven else None
+
+    def generate_forcing_attack_moves(self, board, color, deadline=None):
+        tactics = self.generator.classify_tactical_moves(board, color, deadline=deadline)
+        ordered_groups = (
+            tactics["immediate_win"],
+            tactics["open_four"],
+            tactics["four_three"],
+            tactics["legal_double_three_threat"],
+            tactics["closed_four"],
+            tactics["open_three"],
+            tactics["broken_open_three"],
+        )
+        moves = []
+        seen = set()
+        for group in ordered_groups:
+            for move in group:
+                if deadline is not None and time.time() >= deadline:
+                    return moves
+                if move in seen:
+                    continue
+                if self.rules.is_legal_move(board, move[0], move[1], color):
+                    seen.add(move)
+                    moves.append(move)
+        return moves[:14]
+
+    def generate_forced_defense_moves(self, board, attacker_color, defender_color, attack_move, deadline=None):
+        replies = []
+        seen = set()
+        for move in self.generator.find_immediate_wins(board, attacker_color, deadline=deadline):
+            if deadline is not None and time.time() >= deadline:
+                return replies
+            if move not in seen and self.rules.is_legal_move(board, move[0], move[1], defender_color):
+                seen.add(move)
+                replies.append(move)
+        for move in self.generator.get_defense_points_for_threats(
+            board,
+            attacker_color,
+            defender_color,
+            deadline=deadline,
+        ):
+            if deadline is not None and time.time() >= deadline:
+                return replies
+            if move not in seen and self.rules.is_legal_move(board, move[0], move[1], defender_color):
+                seen.add(move)
+                replies.append(move)
+        return replies[:10]
+
+    def _prove_forced_win(self, board, attacker, defender, depth, deadline):
+        if time.time() >= deadline or depth <= 0:
+            return False
+        if self.generator.find_immediate_wins(board, attacker, deadline=deadline):
+            return True
+        for attack in self.generate_forcing_attack_moves(board, attacker, deadline=deadline)[:10]:
+            if time.time() >= deadline:
+                return False
+            r, c = attack
+            if not self.rules.is_legal_move(board, r, c, attacker):
+                continue
+            board.place(r, c, attacker)
+            try:
+                if self.rules.check_win(board, r, c, attacker):
+                    return True
+                if not self._creates_strong_threat_after_place(board, r, c, attacker):
+                    continue
+                defenses = self.generate_forced_defense_moves(board, attacker, defender, attack, deadline=deadline)
+                if not defenses:
+                    return True
+                all_defenses_fail = True
+                for defense in defenses[:8]:
+                    if time.time() >= deadline:
+                        return False
+                    dr, dc = defense
+                    board.place(dr, dc, defender)
+                    try:
+                        if self.rules.check_win(board, dr, dc, defender):
+                            all_defenses_fail = False
+                            break
+                        if not self._prove_forced_win(board, attacker, defender, depth - 2, deadline):
+                            all_defenses_fail = False
+                            break
+                    finally:
+                        board.undo(dr, dc)
+                if all_defenses_fail:
+                    return True
+            finally:
+                board.undo(r, c)
+        return False
 
     def _find_forcing_sequence(self, board, attacker, defender, deadline, depth):
         if time.time() >= deadline or depth <= 0:

@@ -6,19 +6,29 @@ from .constants import BLACK, BOARD_SIZE, WHITE, opponent
 from .evaluator import Evaluator
 from .patterns import PatternAnalyzer
 from .rules import RuleEngine
+from .strategy_config import ENABLE_PLAN_CANDIDATES
+from .strategy_weights import StrategyWeights
 
 
 class MoveGenerator:
-    def __init__(self, allow_double_four=False):
+    def __init__(self, allow_double_four=False, strategy_weights=None):
         self.allow_double_four = allow_double_four
+        self.strategy_weights = strategy_weights or StrategyWeights()
         self.rules = RuleEngine(allow_double_four=allow_double_four)
-        self.evaluator = Evaluator(allow_double_four=allow_double_four)
+        self.evaluator = Evaluator(
+            allow_double_four=allow_double_four,
+            strategy_weights=self.strategy_weights,
+        )
         self.patterns = PatternAnalyzer()
 
     def set_allow_double_four(self, allow):
         self.allow_double_four = allow
         self.rules.allow_double_four = allow
         self.evaluator.set_allow_double_four(allow)
+
+    def set_strategy_weights(self, strategy_weights):
+        self.strategy_weights = strategy_weights or StrategyWeights()
+        self.evaluator.set_strategy_weights(self.strategy_weights)
 
     def generate_candidates(self, board, color, max_moves=None):
         return self.generate_search_candidates(board, color, max_moves=max_moves)
@@ -63,7 +73,14 @@ class MoveGenerator:
             for name, moves in groups.items()
         }
 
-    def generate_tactical_moves(self, board, color, include_future_setup=True, deadline=None):
+    def generate_tactical_moves(
+        self,
+        board,
+        color,
+        include_future_setup=True,
+        include_plan_candidates=ENABLE_PLAN_CANDIDATES,
+        deadline=None,
+    ):
         essential = []
         seen = set()
         opp = opponent(color)
@@ -93,6 +110,13 @@ class MoveGenerator:
                     self.find_future_four_three_setup_moves(board, opp, deadline=deadline),
                 ]
             )
+        if include_plan_candidates:
+            tactical_groups.extend(
+                [
+                    self.find_plan_candidates(board, color, deadline=deadline),
+                    self.find_plan_candidates(board, opp, deadline=deadline),
+                ]
+            )
         for group in tactical_groups:
             for move in group:
                 if deadline is not None and time.time() >= deadline:
@@ -103,12 +127,20 @@ class MoveGenerator:
         return self.order_moves(board, color, essential, use_deep_score=False, deadline=deadline)
 
     def generate_search_candidates(
-        self, board, color, max_moves=None, include_future_setup=True, use_deep_score=True, deadline=None
+        self,
+        board,
+        color,
+        max_moves=None,
+        include_future_setup=True,
+        include_plan_candidates=ENABLE_PLAN_CANDIDATES,
+        use_deep_score=True,
+        deadline=None,
     ):
         essential = self.generate_tactical_moves(
             board,
             color,
             include_future_setup=include_future_setup,
+            include_plan_candidates=include_plan_candidates,
             deadline=deadline,
         )
         essential_set = set(essential)
@@ -125,12 +157,22 @@ class MoveGenerator:
         return essential + normal
 
     def order_moves(self, board, color, moves, use_deep_score=False, deadline=None):
-        scorer = self.evaluator.deep_score_candidate if use_deep_score else self.evaluator.quick_score_candidate
         scored = []
         for r, c in moves:
             if deadline is not None and time.time() >= deadline:
                 break
-            scored.append((scorer(board, r, c, color), r, c))
+            if use_deep_score:
+                score = self.evaluator.deep_score_candidate(
+                    board,
+                    r,
+                    c,
+                    color,
+                    deadline=deadline,
+                    root_eval=True,
+                )
+            else:
+                score = self.evaluator.quick_score_candidate(board, r, c, color)
+            scored.append((score, r, c))
         scored.sort(reverse=True)
         return [(r, c) for _, r, c in scored]
 
@@ -221,6 +263,56 @@ class MoveGenerator:
                 scored.append((score, r, c))
         scored.sort(reverse=True)
         return [(r, c) for _, r, c in scored[:8]]
+
+    def find_plan_candidates(self, board, color, deadline=None, limit=8):
+        if deadline is not None and time.time() >= deadline:
+            return []
+        legal_moves = []
+        for move in self._nearby_moves(board, radius=2):
+            if deadline is not None and time.time() >= deadline:
+                break
+            if self.rules.is_legal_move(board, move[0], move[1], color):
+                legal_moves.append(move)
+        ordered = self.order_moves(board, color, legal_moves, use_deep_score=False, deadline=deadline)[:20]
+        scored = []
+        for r, c in ordered:
+            if deadline is not None and time.time() >= deadline:
+                break
+            board.place(r, c, color)
+            try:
+                summary = self.evaluator._future_threat_summary(board, color, limit=10, deadline=deadline)
+                forcing_count = (
+                    summary["four_three"]
+                    + summary["open_four"]
+                    + summary["legal_double_three"]
+                    + summary["closed_four"]
+                )
+                if forcing_count == 0:
+                    continue
+                score = (
+                    summary["four_three"] * 500_000
+                    + summary["open_four"] * 600_000
+                    + summary["legal_double_three"] * 300_000
+                    + summary["closed_four"] * 180_000
+                )
+                if forcing_count >= 2:
+                    score += 450_000
+                if summary["direction_diverse"]:
+                    score += 250_000
+                if self.evaluator._future_threat_survives_best_defense(
+                    board,
+                    color,
+                    summary["moves"],
+                    deadline=deadline,
+                ):
+                    score += 600_000
+            finally:
+                board.undo(r, c)
+            score = int(score * self.strategy_weights.plan_candidate_weight)
+            if score >= 300_000:
+                scored.append((score, r, c))
+        scored.sort(reverse=True)
+        return [(r, c) for _, r, c in scored[:limit]]
 
     def get_defense_points_for_threats(self, board, attacker_color, defender_color, deadline=None):
         points = set()

@@ -72,6 +72,8 @@ class OmokGUI:
         bottom.pack(padx=10, pady=8, fill=tk.X)
         self.place_button = tk.Button(bottom, text="착수", command=self.place_selected, state=tk.DISABLED)
         self.place_button.pack(side=tk.LEFT)
+        self.undo_button = tk.Button(bottom, text="되돌리기", command=self.undo_last_human_move, state=tk.DISABLED)
+        self.undo_button.pack(side=tk.LEFT, padx=(8, 0))
         tk.Label(bottom, textvariable=self.selection_var).pack(side=tk.LEFT, padx=12)
 
         tk.Label(self.root, textvariable=self.status_var, anchor="w").pack(padx=10, pady=(0, 10), fill=tk.X)
@@ -97,7 +99,7 @@ class OmokGUI:
         self.selected = None
         self.game_over = False
         self.human_turn = self.human_color == BLACK
-        self._update_place_button()
+        self._update_action_buttons()
         self._draw_board()
 
         if self.ai_color == BLACK:
@@ -131,7 +133,7 @@ class OmokGUI:
         row, col = to_external(self.selected)
         self.selection_var.set(f"선택: ({row}, {col})")
         self.status_var.set("선택한 칸에 두려면 착수 버튼을 누르세요.")
-        self._update_place_button()
+        self._update_action_buttons()
         self._draw_board()
 
     def place_selected(self):
@@ -153,9 +155,44 @@ class OmokGUI:
             return
 
         self.human_turn = False
-        self._update_place_button()
+        self._update_action_buttons()
         self.status_var.set("AI 차례입니다. 계산 중...")
         self.root.after(100, self.run_ai_turn)
+
+    def undo_last_human_move(self):
+        if not self.board or not self.ai or not self._can_undo():
+            return
+        if not messagebox.askyesno("되돌리기", "마지막 착수를 되돌리시겠습니까?"):
+            return
+        self._perform_undo()
+
+    def _perform_undo(self):
+        last_human_idx = None
+        for i in range(len(self.board.history) - 1, -1, -1):
+            if self.board.history[i][2] == self.human_color:
+                last_human_idx = i
+                break
+        if last_human_idx is None:
+            return
+
+        moves_to_undo = len(self.board.history) - last_human_idx
+        for _ in range(moves_to_undo):
+            if not self.board.history:
+                break
+            r, c, _ = self.board.history[-1]
+            self.board.undo(r, c)
+            if self.ai.board.history:
+                ar, ac, _ = self.ai.board.history[-1]
+                self.ai.board.undo(ar, ac)
+
+        self.ai.search_engine.clear_cache()
+        self.game_over = False
+        self.human_turn = True
+        self.selected = None
+        self.selection_var.set("선택: 없음")
+        self._update_action_buttons()
+        self._draw_board()
+        self.status_var.set("마지막 착수를 되돌렸습니다. 다시 둘 칸을 선택하세요.")
 
     def run_ai_turn(self):
         if not self.board or not self.ai or self.game_over:
@@ -176,20 +213,20 @@ class OmokGUI:
         self.status_var.set(
             f"AI 착수: ({row}, {col}), 계산 시간: {elapsed:.2f}초. 이제 당신 차례입니다."
         )
-        self._update_place_button()
+        self._update_action_buttons()
 
     def _finish_if_needed(self, r, c, color, message):
         if self.rules.check_win(self.board, r, c, color):
             self.game_over = True
             self.human_turn = False
             self.status_var.set(message)
-            self._update_place_button()
+            self._update_action_buttons()
             return True
         if not any(self.board.legal_empty_cells()):
             self.game_over = True
             self.human_turn = False
             self.status_var.set("무승부입니다.")
-            self._update_place_button()
+            self._update_action_buttons()
             return True
         return False
 
@@ -264,9 +301,16 @@ class OmokGUI:
     def _cell_center(self, r, c):
         return MARGIN + c * CELL_SIZE, MARGIN + r * CELL_SIZE
 
-    def _update_place_button(self):
-        state = tk.NORMAL if self.human_turn and self.selected and not self.game_over else tk.DISABLED
-        self.place_button.configure(state=state)
+    def _can_undo(self):
+        if not self.board or not self.ai:
+            return False
+        return any(color == self.human_color for _, _, color in self.board.history)
+
+    def _update_action_buttons(self):
+        place_state = tk.NORMAL if self.human_turn and self.selected and not self.game_over else tk.DISABLED
+        undo_state = tk.NORMAL if self.human_turn and self._can_undo() else tk.DISABLED
+        self.place_button.configure(state=place_state)
+        self.undo_button.configure(state=undo_state)
 
 
 def main():

@@ -7,6 +7,7 @@ from .constants import BLACK, WHITE, opponent, to_external, to_internal
 from .move_generator import MoveGenerator
 from .rules import RuleEngine
 from .search import SearchEngine
+from .strategy_weights import StrategyWeights
 from .threat_search import ThreatSearch
 
 
@@ -15,15 +16,29 @@ ROOT_DEEP_RETURN_THRESHOLD = 400_000
 
 
 class OmokAI:
-    def __init__(self, color=BLACK, blocked_cells=None, time_limit=3.0, allow_double_four=False):
+    def __init__(
+        self,
+        color=BLACK,
+        blocked_cells=None,
+        time_limit=3.0,
+        allow_double_four=False,
+        strategy_weights=None,
+    ):
         self.color = color
         self.opponent_color = opponent(color)
         self.time_limit = time_limit
         self.allow_double_four = allow_double_four
+        self.strategy_weights = strategy_weights or StrategyWeights()
         self.board = Board(blocked_cells=blocked_cells)
         self.rules = RuleEngine(allow_double_four=allow_double_four)
-        self.generator = MoveGenerator(allow_double_four=allow_double_four)
-        self.search_engine = SearchEngine(allow_double_four=allow_double_four)
+        self.generator = MoveGenerator(
+            allow_double_four=allow_double_four,
+            strategy_weights=self.strategy_weights,
+        )
+        self.search_engine = SearchEngine(
+            allow_double_four=allow_double_four,
+            strategy_weights=self.strategy_weights,
+        )
         self.threat_search = ThreatSearch(allow_double_four=allow_double_four)
 
     def choose_color(self):
@@ -111,6 +126,18 @@ class OmokAI:
         if four_three:
             return four_three
 
+        if time.time() >= hard_deadline:
+            return fallback
+        prevent_opponent_open_four_creation = self._first_legal(opponent_tactics["open_four"])
+        if prevent_opponent_open_four_creation:
+            return prevent_opponent_open_four_creation
+
+        if time.time() >= hard_deadline:
+            return fallback
+        prevent_opponent_four_three_creation = self._first_legal(opponent_tactics["four_three"])
+        if prevent_opponent_four_three_creation:
+            return prevent_opponent_four_three_creation
+
         if time.time() + 0.20 < soft_deadline:
             try:
                 attack_deadline = min(soft_deadline, time.time() + 0.35)
@@ -189,6 +216,7 @@ class OmokAI:
                 c,
                 self.color,
                 deadline=deep_deadline,
+                root_eval=True,
             )
             if score > best_score:
                 best_score = score
