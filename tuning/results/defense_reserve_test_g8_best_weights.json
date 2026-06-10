@@ -1,8 +1,8 @@
 {
-  "config_id": "black_aggressive_current",
-  "score": 0.175,
-  "overall_win_rate": 0.25,
-  "black_win_rate": 0.0,
+  "config_id": "pvs_current",
+  "score": 0.3187,
+  "overall_win_rate": 0.4375,
+  "black_win_rate": 0.375,
   "white_win_rate": 0.5,
   "weights": {
     "black_initiative_weight": 1.0,

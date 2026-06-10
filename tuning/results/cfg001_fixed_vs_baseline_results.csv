@@ -1,2 +1,0 @@
-rank,config_id,overall_win_rate,black_win_rate,white_win_rate,draw_rate,avg_time,max_time,timeout_count,illegal_count,score,black_initiative_weight,black_blocking_weight,white_initiative_weight,white_blocking_weight,opponent_reply_penalty_weight,future_43_weight,resilient_future_weight,plan_candidate_weight,leaf_next_threat_weight
-1,cfg_001_fixed,0.1667,0.25,0.0833,0.3333,2.8569,2.8779,0,0,0.1417,1.25,0.95,0.9,1.05,1.2,1.0,1.0,1.0,0.0
